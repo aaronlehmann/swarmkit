@@ -65,7 +65,9 @@ func (n *Node) loadAndStart(ctx context.Context, forceNewCluster bool) error {
 		return err
 	}
 
+	n.nodeLock.Lock()
 	n.Node = raft.RestartNode(n.Config)
+	n.nodeLock.Unlock()
 	return nil
 }
 
