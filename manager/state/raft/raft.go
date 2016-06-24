@@ -122,8 +122,6 @@ type Node struct {
 	stopMu sync.RWMutex
 	// used for membership management checks
 	membershipLock sync.Mutex
-	// used to set Node
-	nodeLock sync.Mutex
 
 	snapshotInProgress chan uint64
 	asyncTasks         sync.WaitGroup
@@ -284,10 +282,8 @@ func (n *Node) JoinAndStart() error {
 	if n.joinAddr != "" {
 		n.Config.Logger.Warning("ignoring request to join cluster, because raft state already exists")
 	}
-	atomic.StoreUint32(&n.isMember, 1)
-	n.nodeLock.Lock()
 	n.Node = raft.RestartNode(n.Config)
-	n.nodeLock.Unlock()
+	atomic.StoreUint32(&n.isMember, 1)
 	return nil
 }
 
@@ -499,13 +495,13 @@ func (n *Node) Join(ctx context.Context, req *api.JoinRequest) (*api.JoinRespons
 	n.membershipLock.Lock()
 	defer n.membershipLock.Unlock()
 
+	if !n.IsMember() {
+		return nil, ErrNoRaftMember
+	}
+
 	if n.IsStopped() {
 		log.WithError(ErrStopped).Errorf(ErrStopped.Error())
 		return nil, ErrStopped
-	}
-
-	if !n.IsMember() {
-		return nil, ErrNoRaftMember
 	}
 
 	if !n.IsLeader() {
@@ -611,12 +607,12 @@ func (n *Node) Leave(ctx context.Context, req *api.LeaveRequest) (*api.LeaveResp
 	n.stopMu.RLock()
 	defer n.stopMu.RUnlock()
 
-	if n.IsStopped() {
-		return nil, ErrStopped
-	}
-
 	if !n.IsMember() {
 		return nil, ErrNoRaftMember
+	}
+
+	if n.IsStopped() {
+		return nil, ErrStopped
 	}
 
 	if !n.IsLeader() {
@@ -665,12 +661,12 @@ func (n *Node) ProcessRaftMessage(ctx context.Context, msg *api.ProcessRaftMessa
 	n.stopMu.RLock()
 	defer n.stopMu.RUnlock()
 
-	if n.IsStopped() {
-		return nil, ErrStopped
-	}
-
 	if !n.IsMember() {
 		return nil, ErrNoRaftMember
+	}
+
+	if n.IsStopped() {
+		return nil, ErrStopped
 	}
 
 	if err := n.Step(n.Ctx, *msg.Message); err != nil {
@@ -836,8 +832,6 @@ func (n *Node) IsMember() bool {
 
 // IsStopped checks if the raft node is stopped or not
 func (n *Node) IsStopped() bool {
-	n.nodeLock.Lock()
-	defer n.nodeLock.Unlock()
 	if n.Node == nil {
 		return true
 	}
