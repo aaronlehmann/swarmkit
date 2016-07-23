@@ -8,7 +8,6 @@ import (
 
 	"github.com/docker/swarmkit/api"
 	"github.com/docker/swarmkit/log"
-	"github.com/docker/swarmkit/protobuf/ptypes"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"golang.org/x/net/context"
@@ -352,25 +351,7 @@ func checkDo(t *testing.T, ctx context.Context, task *api.Task, ctlr Controller,
 		assert.NoError(t, err)
 	}
 
-	if task.Status.Timestamp != nil {
-		// crazy timestamp validation follows
-		previous, err := ptypes.Timestamp(task.Status.Timestamp)
-		assert.Nil(t, err)
-
-		current, err := ptypes.Timestamp(status.Timestamp)
-		assert.Nil(t, err)
-
-		if current.Before(previous) {
-			// ensure that the timestamp alwways proceeds forward
-			t.Fatalf("timestamp must proceed forward: %v < %v", current, previous)
-		}
-	}
-
-	// if the status and task.Status are different, make sure new timestamp is greater
-
-	copy := status.Copy()
-	copy.Timestamp = nil // don't check against timestamp
-	assert.Equal(t, expected, copy)
+	assert.Equal(t, expected, status)
 
 	return status
 }
