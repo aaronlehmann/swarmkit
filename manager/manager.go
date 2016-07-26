@@ -189,9 +189,14 @@ func New(config *Config) (*Manager, error) {
 		raftCfg.HeartbeatTick = int(config.HeartbeatTick)
 	}
 
+	raftAddr := ""
+	if config.AdvertiseAddr != "" {
+		raftAddr = config.AdvertiseAddr
+	}
+
 	newNodeOpts := raft.NewNodeOptions{
 		ID:              config.SecurityConfig.ClientTLSCreds.NodeID(),
-		Addr:            tcpAddr,
+		Addr:            raftAddr,
 		JoinAddr:        config.JoinRaft,
 		Config:          raftCfg,
 		StateDir:        raftStateDir,
