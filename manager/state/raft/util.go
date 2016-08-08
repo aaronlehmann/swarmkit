@@ -5,6 +5,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/coreos/etcd/raft"
 	"github.com/docker/swarmkit/api"
 	"github.com/docker/swarmkit/manager/state"
 	"github.com/docker/swarmkit/manager/state/store"
@@ -34,22 +35,24 @@ func Register(server *grpc.Server, node *Node) {
 
 // WaitForLeader waits until node observe some leader in cluster. It returns
 // error if ctx was cancelled before leader appeared.
-func WaitForLeader(ctx context.Context, n *Node) error {
-	l := n.Leader()
-	if l != 0 {
-		return nil
+func WaitForLeader(ctx context.Context, n *Node) (uint64, error) {
+	status := n.Node.Status()
+	l := status.Lead
+	if l != 0 && (l != n.Config.ID || status.RaftState == raft.StateLeader) {
+		return l, nil
 	}
 	ticker := time.NewTicker(50 * time.Millisecond)
 	defer ticker.Stop()
-	for l == 0 {
+	for l == 0 || (l == n.Config.ID && status.RaftState != raft.StateLeader) {
 		select {
 		case <-ticker.C:
 		case <-ctx.Done():
-			return ctx.Err()
+			return 0, ctx.Err()
 		}
-		l = n.Leader()
+		status = n.Node.Status()
+		l = status.Lead
 	}
-	return nil
+	return l, nil
 }
 
 // WaitForCluster waits until node observes that the cluster wide config is

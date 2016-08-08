@@ -511,10 +511,8 @@ func (n *Node) isLeader() bool {
 		return false
 	}
 
-	if n.Node.Status().Lead == n.Config.ID {
-		return true
-	}
-	return false
+	status := n.Node.Status()
+	return status.Lead == n.Config.ID && status.RaftState == raft.StateLeader
 }
 
 // IsLeader checks if we are the leader or not, with the protection of lock
@@ -828,14 +826,17 @@ func (n *Node) LeaderAddr() (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(n.Ctx, 10*time.Second)
 	defer cancel()
-	if err := WaitForLeader(ctx, n); err != nil {
-		return "", ErrNoClusterLeader
-	}
+
 	if !n.IsMember() {
 		return "", ErrNoRaftMember
 	}
+
+	leader, err := WaitForLeader(ctx, n)
+	if err != nil {
+		return "", ErrNoClusterLeader
+	}
 	ms := n.cluster.Members()
-	l := ms[n.leader()]
+	l := ms[leader]
 	if l == nil {
 		return "", ErrNoClusterLeader
 	}

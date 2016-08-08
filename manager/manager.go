@@ -517,7 +517,7 @@ func (m *Manager) Run(parent context.Context) error {
 		}
 	}()
 
-	if err := raft.WaitForLeader(ctx, m.RaftNode); err != nil {
+	if _, err := raft.WaitForLeader(ctx, m.RaftNode); err != nil {
 		m.server.Stop()
 		return err
 	}
