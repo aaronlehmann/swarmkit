@@ -499,6 +499,26 @@ func TestRaftRestartClusterStaggered(t *testing.T) {
 	testRaftRestartCluster(t, true)
 }
 
+func TestRaftWipedState(t *testing.T) {
+	t.Parallel()
+
+	nodes, clockSource := raftutils.NewRaftCluster(t, tc)
+	defer raftutils.TeardownCluster(t, nodes)
+
+	// Stop node 3
+	nodes[3].Server.Stop()
+	nodes[3].ShutdownRaft()
+
+	// Remove its state
+	os.RemoveAll(nodes[3].StateDir)
+
+	raftutils.AdvanceTicks(clockSource, 5)
+
+	// Restart node 3
+	nodes[3] = raftutils.RestartNode(t, clockSource, nodes[3], false)
+	raftutils.WaitForCluster(t, clockSource, nodes)
+}
+
 func TestRaftForceNewCluster(t *testing.T) {
 	t.Parallel()
 
