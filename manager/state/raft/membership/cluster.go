@@ -236,6 +236,31 @@ func (c *Cluster) ReplaceMemberConnection(id uint64, oldConn *Member, newConn *M
 	newMember.Conn = newConn.Conn
 	c.members[id] = &newMember
 
+	if oldMember.RaftMember.Addr != newAddr {
+		c.broadcastUpdate()
+	}
+
+	return nil
+}
+
+// SetNodeAddr changes the node's address. It does not initiate a connection.
+func (c *Cluster) SetNodeAddr(id uint64, newAddr string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	oldMember, ok := c.members[id]
+	if !ok {
+		return ErrIDNotFound
+	}
+
+	newMember := *oldMember
+	newMember.RaftMember.Addr = newAddr
+	c.members[id] = &newMember
+
+	if oldMember.RaftMember.Addr != newAddr {
+		c.broadcastUpdate()
+	}
+
 	return nil
 }
 

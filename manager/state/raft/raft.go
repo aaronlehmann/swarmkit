@@ -123,6 +123,9 @@ type Node struct {
 	stopMu sync.RWMutex
 	// used for membership management checks
 	membershipLock sync.Mutex
+	// synchronizes access to n.opts.Addr, and makes sure the address is not
+	// updated concurrently with JoinAndStart.
+	addrLock sync.Mutex
 
 	snapshotInProgress chan raftpb.SnapshotMetadata
 	asyncTasks         sync.WaitGroup
@@ -240,6 +243,51 @@ func NewNode(opts NodeOptions) *Node {
 	return n
 }
 
+// SetAddr provides the raft node's address. This can be used in cases where
+// opts.Addr was not provided to NewNode, for example when a port was not bound
+// until after the raft node was created.
+func (n *Node) SetAddr(ctx context.Context, addr string) error {
+	n.addrLock.Lock()
+	defer n.addrLock.Unlock()
+
+	n.opts.Addr = addr
+
+	if n.IsMember() {
+		if err := n.cluster.SetNodeAddr(n.Config.ID, addr); err != nil {
+			return err
+		}
+
+		// If the raft node is running, submit a configuration change
+		// with the new address.
+
+		// TODO(aaronl): Currently, this node must be the leader to
+		// submit this configuration change. This works for the initial
+		// use cases (single-node cluster late binding ports, or calling
+		// SetAddr before joining a cluster). In the future, we may want
+		// to support having a follower proactively change its remote
+		// address.
+
+		leadershipCh, cancel := n.SubscribeLeadership()
+		defer cancel()
+
+		isLeader := atomic.LoadUint32(&n.signalledLeadership) == 1
+		for !isLeader {
+			select {
+			case leadershipChange := <-leadershipCh:
+				if leadershipChange == IsLeader {
+					isLeader = true
+				}
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+
+		return n.updateMember(ctx, addr, n.Config.ID, n.opts.ID)
+	}
+
+	return nil
+}
+
 // WithContext returns context which is cancelled when parent context cancelled
 // or node is stopped.
 func (n *Node) WithContext(ctx context.Context) (context.Context, context.CancelFunc) {
@@ -281,8 +329,14 @@ func (n *Node) JoinAndStart(ctx context.Context) (err error) {
 	n.snapshotMeta = snapshot.Metadata
 	n.writtenWALIndex, _ = n.raftStore.LastIndex() // lastIndex always returns nil as an error
 
+	n.addrLock.Lock()
+	defer n.addrLock.Unlock()
+
 	if loadAndStartErr == storage.ErrNoWAL {
 		if n.opts.JoinAddr != "" {
+			if n.opts.Addr == "" {
+				return errors.New("attempted to join raft cluster without knowing own address")
+			}
 			c, err := n.ConnectToMember(n.opts.JoinAddr, 10*time.Second)
 			if err != nil {
 				return err
