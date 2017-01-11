@@ -126,7 +126,7 @@ coverage: ## generate coverprofiles from the unit tests
 	@echo "🐳 $@"
 	@( for pkg in $(filter-out ${INTEGRATION_PACKAGE},${PACKAGES}); do \
 		go test -i ${RACE} -tags "${DOCKER_BUILDTAGS}" -test.short -coverprofile="../../../$$pkg/coverage.txt" -covermode=atomic $$pkg || exit; \
-		go test ${RACE} -tags "${DOCKER_BUILDTAGS}" -test.short -coverprofile="../../../$$pkg/coverage.txt" -covermode=atomic $$pkg || exit; \
+		go test ${RACE} -timeout 2m -tags "${DOCKER_BUILDTAGS}" -test.short -coverprofile="../../../$$pkg/coverage.txt" -covermode=atomic $$pkg || exit; \
 	done )
 
 coverage-integration: ## generate coverprofiles from the integration tests
