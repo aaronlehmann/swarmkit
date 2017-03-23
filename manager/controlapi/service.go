@@ -24,9 +24,8 @@ import (
 )
 
 var (
-	errNetworkUpdateNotSupported = errors.New("changing network in service is not supported")
-	errRenameNotSupported        = errors.New("renaming services is not supported")
-	errModeChangeNotAllowed      = errors.New("service mode change is not allowed")
+	errRenameNotSupported   = errors.New("renaming services is not supported")
+	errModeChangeNotAllowed = errors.New("service mode change is not allowed")
 )
 
 func validateResources(r *api.Resources) error {
@@ -561,20 +560,6 @@ func (s *Server) UpdateService(ctx context.Context, request *api.UpdateServiceRe
 		service = store.GetService(tx, request.ServiceID)
 		if service == nil {
 			return grpc.Errorf(codes.NotFound, "service %s not found", request.ServiceID)
-		}
-		// temporary disable network update
-		requestSpecNetworks := request.Spec.Task.Networks
-		if len(requestSpecNetworks) == 0 {
-			requestSpecNetworks = request.Spec.Networks
-		}
-
-		specNetworks := service.Spec.Task.Networks
-		if len(specNetworks) == 0 {
-			specNetworks = service.Spec.Networks
-		}
-
-		if !reflect.DeepEqual(requestSpecNetworks, specNetworks) {
-			return grpc.Errorf(codes.Unimplemented, errNetworkUpdateNotSupported.Error())
 		}
 
 		// Check to see if all the secrets being added exist as objects

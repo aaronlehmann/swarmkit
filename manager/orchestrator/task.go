@@ -6,6 +6,7 @@ import (
 
 	"github.com/docker/swarmkit/api"
 	"github.com/docker/swarmkit/identity"
+	"github.com/docker/swarmkit/manager/allocator"
 	"github.com/docker/swarmkit/protobuf/ptypes"
 )
 
@@ -70,8 +71,61 @@ func IsTaskDirty(s *api.Service, t *api.Task) bool {
 		return false
 	}
 
-	return !reflect.DeepEqual(s.Spec.Task, t.Spec) ||
-		(t.Endpoint != nil && !reflect.DeepEqual(s.Spec.Endpoint, t.Endpoint.Spec))
+	if !reflect.DeepEqual(s.Spec.Task, t.Spec) ||
+		(t.Endpoint != nil && !reflect.DeepEqual(s.Spec.Endpoint, t.Endpoint.Spec)) {
+		return true
+	}
+
+	ingressNetworkNeeded := allocator.IsIngressNetworkNeeded(s)
+
+	// Always prefer NetworkAttachmentConfig in the TaskSpec
+	specNetworks := t.Spec.Networks
+	if len(specNetworks) == 0 && s != nil && len(s.Spec.Networks) != 0 {
+		specNetworks = s.Spec.Networks
+	}
+
+	// O(N^2), but probably better than doing memory allocations to create
+	// a map. Revisit this if we end up needing to support large numbers of
+	// networks on the same service.
+
+	// First check that all networks referenced by the task are part of the
+	// service spec.
+taskNetworks:
+	for _, taskNetwork := range t.Networks {
+		if allocator.IsIngressNetwork(taskNetwork.Network) {
+			if !ingressNetworkNeeded {
+				return true
+			}
+			ingressNetworkNeeded = false
+			continue
+		}
+
+		for _, serviceNetwork := range specNetworks {
+			if serviceNetwork.Target == taskNetwork.Network.ID {
+				continue taskNetworks
+			}
+		}
+
+		return true
+	}
+
+serviceNetworks:
+	// Next, check that all networks referenced by the service spec are part
+	// of the task.
+	for _, serviceNetwork := range specNetworks {
+		for _, taskNetwork := range t.Networks {
+			if allocator.IsIngressNetwork(taskNetwork.Network) {
+				continue
+			}
+			if serviceNetwork.Target == taskNetwork.Network.ID {
+				continue serviceNetworks
+			}
+		}
+
+		return true
+	}
+
+	return false
 }
 
 // InvalidNode is true if the node is nil, down, or drained
