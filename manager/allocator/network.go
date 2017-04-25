@@ -246,7 +246,7 @@ func (a *Allocator) doNetworkInit(ctx context.Context) (err error) {
 
 	var allocatedServices []*api.Service
 	for _, s := range services {
-		if nc.nwkAllocator.IsServiceAllocated(s, networkallocator.OnInit) {
+		if !nc.nwkAllocator.ServiceNeedsAllocation(s, networkallocator.OnInit) {
 			continue
 		}
 
@@ -371,7 +371,7 @@ func (a *Allocator) doNetworkAlloc(ctx context.Context, ev events.Event) {
 	case state.EventCreateService:
 		s := v.Service.Copy()
 
-		if nc.nwkAllocator.IsServiceAllocated(s) {
+		if !nc.nwkAllocator.ServiceNeedsAllocation(s) {
 			break
 		}
 
@@ -388,7 +388,7 @@ func (a *Allocator) doNetworkAlloc(ctx context.Context, ev events.Event) {
 	case state.EventUpdateService:
 		s := v.Service.Copy()
 
-		if nc.nwkAllocator.IsServiceAllocated(s) {
+		if !nc.nwkAllocator.ServiceNeedsAllocation(s) {
 			if nc.nwkAllocator.PortsAllocatedInHostPublishMode(s) {
 				break
 			}
@@ -496,7 +496,7 @@ func taskReadyForNetworkVote(t *api.Task, s *api.Service, nc *networkContext) bo
 	// network configured or service endpoints have been
 	// allocated.
 	return (len(t.Networks) == 0 || nc.nwkAllocator.IsTaskAllocated(t)) &&
-		(s == nil || nc.nwkAllocator.IsServiceAllocated(s))
+		(s == nil || !nc.nwkAllocator.ServiceNeedsAllocation(s))
 }
 
 func taskUpdateNetworks(t *api.Task, networks []*api.NetworkAttachment) {
@@ -822,7 +822,7 @@ func (a *Allocator) allocateTask(ctx context.Context, t *api.Task) (err error) {
 					return
 				}
 
-				if !nc.nwkAllocator.IsServiceAllocated(s) {
+				if nc.nwkAllocator.ServiceNeedsAllocation(s) {
 					err = fmt.Errorf("service %s to which this task %s belongs has pending allocations", s.ID, t.ID)
 					return
 				}
@@ -936,7 +936,7 @@ func (a *Allocator) procUnallocatedServices(ctx context.Context) {
 	nc := a.netCtx
 	var allocatedServices []*api.Service
 	for _, s := range nc.unallocatedServices {
-		if !nc.nwkAllocator.IsServiceAllocated(s) {
+		if nc.nwkAllocator.ServiceNeedsAllocation(s) {
 			if err := a.allocateService(ctx, s); err != nil {
 				log.G(ctx).WithError(err).Debugf("Failed allocation of unallocated service %s", s.ID)
 				continue
